@@ -1,7 +1,6 @@
 import asyncio
 import logging
 import re
-from pathlib import Path
 
 from telegram import InputMediaPhoto, InputMediaVideo, Update
 from telegram.constants import ChatAction
@@ -48,8 +47,11 @@ async def send_media(message, files):
     if len(files) == 1:
         path = files[0]
         with path.open("rb") as media:
-            if path.suffix.lower() in {".jpg", ".jpeg", ".png", ".webp"}:
+            is_photo = path.suffix.lower() in {".jpg", ".jpeg", ".png", ".webp"}
+            if is_photo and path.stat().st_size <= 10 * 1024 * 1024:
                 await message.reply_photo(photo=media)
+            elif is_photo:
+                await message.reply_document(document=media, filename=path.name)
             else:
                 await message.reply_video(video=media, supports_streaming=True)
         return
