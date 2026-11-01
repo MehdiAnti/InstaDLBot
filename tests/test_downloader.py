@@ -88,4 +88,4 @@ def test_gallery_dl_fallback_uses_bounded_file_size(tmp_path, monkeypatch):
     )
 
     size_index = captured["command"].index("--filesize-max")
-    assert captured["command"][size_index + 1] == f"{downloader.MAX_FILE_SIZE}B"
+    assert captured["command"][size_index + 1] == str(downloader.MAX_FILE_SIZE)
