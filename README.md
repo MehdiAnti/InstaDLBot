@@ -12,6 +12,7 @@ A Telegram bot that downloads Instagram Reels, posts, photos, videos, and carous
 - Temporary download cleanup
 - Optional Instagram cookies for content accessible to your account
 - FastAPI webhook with Telegram secret-token validation
+- Gunicorn with one Uvicorn worker on Render
 - Render deployment configuration and health endpoint
 
 ## Deploy to Render
@@ -23,6 +24,8 @@ A Telegram bot that downloads Instagram Reels, posts, photos, videos, and carous
 5. Set `BOT_TOKEN` to the token from BotFather.
 6. Deploy. Render provides `RENDER_EXTERNAL_URL`; the application registers the Telegram webhook automatically.
 7. Open your bot in Telegram and send `/start`.
+
+Render starts the app with Gunicorn and the Uvicorn worker. It is configured with one worker because the Telegram application and update queue are held in process memory.
 
 The service exposes:
 - `/` — basic service status
