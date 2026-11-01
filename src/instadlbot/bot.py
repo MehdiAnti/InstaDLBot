@@ -180,7 +180,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
             work_dir, files, info = await download_media(url)
 
-            await status.edit_text(f"📤 Sending {len(files)} file(s) to Telegram...")
             caption = build_media_caption(info)
             await send_media(context.bot, message.chat_id, files, caption)
 
