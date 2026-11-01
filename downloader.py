@@ -26,29 +26,29 @@ class DownloadError(Exception):
 def _download_sync(url):
     DOWNLOAD_DIR.mkdir(parents=True, exist_ok=True)
     work_dir = Path(tempfile.mkdtemp(prefix="job_", dir=DOWNLOAD_DIR))
-    cookie_path = write_cookies_file()
-
-    options = {
-        "outtmpl": str(work_dir / "%(autonumber)02d_%(id)s.%(ext)s"),
-        "format": "best[ext=mp4]/best",
-        "merge_output_format": "mp4",
-        "noplaylist": False,
-        "ignoreerrors": True,
-        "quiet": True,
-        "no_warnings": True,
-        "restrictfilenames": True,
-        "socket_timeout": 20,
-        "retries": 2,
-        "fragment_retries": 2,
-        "max_filesize": MAX_FILE_SIZE,
-        "writethumbnail": False,
-        "extractor_retries": 2,
-    }
-
-    if cookie_path:
-        options["cookiefile"] = str(cookie_path)
 
     try:
+        cookie_path = write_cookies_file()
+        options = {
+            "outtmpl": str(work_dir / "%(autonumber)02d_%(id)s.%(ext)s"),
+            "format": "best[ext=mp4]/best",
+            "merge_output_format": "mp4",
+            "noplaylist": False,
+            "ignoreerrors": True,
+            "quiet": True,
+            "no_warnings": True,
+            "restrictfilenames": True,
+            "socket_timeout": 20,
+            "retries": 2,
+            "fragment_retries": 2,
+            "max_filesize": MAX_FILE_SIZE,
+            "writethumbnail": False,
+            "extractor_retries": 2,
+        }
+
+        if cookie_path:
+            options["cookiefile"] = str(cookie_path)
+
         with yt_dlp.YoutubeDL(options) as ydl:
             info = ydl.extract_info(url, download=True)
 
