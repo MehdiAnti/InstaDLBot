@@ -1,4 +1,4 @@
-from bot import extract_instagram_url
+from instadlbot.bot import build_media_caption, extract_instagram_url
 
 
 def test_accepts_reel():
@@ -24,9 +24,6 @@ def test_extracts_url_from_message():
 
 def test_rejects_instagram_profile():
     assert extract_instagram_url("https://www.instagram.com/someuser/") is None
-
-
-from bot import build_media_caption
 
 
 def test_caption_includes_instagram_description_and_bot_footer():
