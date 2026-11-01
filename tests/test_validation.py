@@ -1,3 +1,9 @@
+import asyncio
+from unittest.mock import AsyncMock
+
+from fastapi.testclient import TestClient
+
+import instadlbot.app as app_module
 from instadlbot.bot import build_media_caption, extract_instagram_url
 
 
@@ -39,3 +45,63 @@ def test_caption_always_keeps_bot_footer_with_long_description():
 
 def test_caption_uses_footer_when_description_is_missing():
     assert build_media_caption({}) == "@InstaDLPBot"
+
+
+def test_root_supports_head_requests():
+    response = TestClient(app_module.app).head("/")
+    assert response.status_code == 200
+
+
+def test_health_supports_head_requests():
+    response = TestClient(app_module.app).head("/health")
+    assert response.status_code == 200
+
+
+def test_webhook_rejects_invalid_secret():
+    response = TestClient(app_module.app).post(
+        "/telegram",
+        json={"update_id": 1},
+        headers={"X-Telegram-Bot-Api-Secret-Token": "incorrect"},
+    )
+    assert response.status_code == 403
+
+
+def test_webhook_rejects_non_object_payload():
+    response = TestClient(app_module.app).post(
+        "/telegram",
+        json=[],
+        headers={
+            "X-Telegram-Bot-Api-Secret-Token": app_module.WEBHOOK_SECRET,
+        },
+    )
+    assert response.status_code == 400
+
+
+def test_shutdown_does_not_delete_registered_webhook(monkeypatch):
+    class FakeTelegramApplication:
+        def __init__(self):
+            self.bot = type("FakeBot", (), {})()
+            self.bot.set_webhook = AsyncMock()
+            self.bot.delete_webhook = AsyncMock()
+            self.initialize = AsyncMock()
+            self.start = AsyncMock()
+            self.stop = AsyncMock()
+            self.shutdown = AsyncMock()
+            self.process_update = AsyncMock()
+
+    fake_application = FakeTelegramApplication()
+    monkeypatch.setattr(app_module, "telegram_app", fake_application)
+    monkeypatch.setattr(app_module, "RENDER_EXTERNAL_URL", "https://example.com")
+    monkeypatch.setattr(app_module, "WEBHOOK_SECRET", "test-webhook-secret")
+    monkeypatch.setattr(app_module, "worker_task", None)
+
+    async def run_lifespan():
+        async with app_module.lifespan(app_module.app):
+            await asyncio.sleep(0)
+
+    asyncio.run(run_lifespan())
+
+    fake_application.bot.set_webhook.assert_awaited_once()
+    fake_application.bot.delete_webhook.assert_not_awaited()
+    fake_application.stop.assert_awaited_once()
+    fake_application.shutdown.assert_awaited_once()
