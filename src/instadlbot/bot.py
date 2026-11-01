@@ -20,6 +20,7 @@ DOWNLOAD_SEMAPHORE = asyncio.Semaphore(MAX_CONCURRENT_DOWNLOADS)
 URL_EXTRACTOR = re.compile(r"https?://[^\s<>]+", re.IGNORECASE)
 BOT_FOOTER = "@InstaDLPBot"
 MAX_CAPTION_LENGTH = 1024
+MAX_PHOTO_SIZE = 9 * 1024 * 1024
 
 
 def extract_instagram_url(text):
@@ -120,7 +121,7 @@ async def send_media(bot, chat_id, files, caption):
     for path in files:
         suffix = path.suffix.lower()
 
-        if suffix in {".jpg", ".jpeg", ".png", ".webp"} and path.stat().st_size <= 10 * 1024 * 1024:
+        if suffix in {".jpg", ".jpeg", ".png", ".webp"} and path.stat().st_size <= MAX_PHOTO_SIZE:
             kind = "photo"
         elif suffix in {".mp4", ".m4v", ".mov"}:
             kind = "video"
