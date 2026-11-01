@@ -1,9 +1,11 @@
 import asyncio
 import logging
+import re
 import shutil
 import subprocess
 import sys
 import tempfile
+from http.cookiejar import MozillaCookieJar
 from pathlib import Path
 
 import yt_dlp
@@ -19,6 +21,7 @@ from .config import (
 logger = logging.getLogger(__name__)
 MAX_FILE_SIZE = MAX_FILE_SIZE_MB * 1024 * 1024
 GALLERY_DL_TIMEOUT = max(1, min(90, DOWNLOAD_TIMEOUT - 15))
+INSTALOADER_TIMEOUT = 20
 SUPPORTED_EXTENSIONS = {
     ".jpg",
     ".jpeg",
@@ -111,6 +114,39 @@ def _download_images_with_gallery_dl(url, work_dir, cookie_path):
         )
 
 
+def _download_images_with_instaloader(url, work_dir, cookie_path):
+    match = re.search(r"/(?:p|reel|reels|tv)/([^/?#]+)", url, re.IGNORECASE)
+    if not match:
+        return
+
+    try:
+        import instaloader
+        from instaloader import Post
+
+        loader = instaloader.Instaloader(
+            dirname_pattern=str(work_dir / "{target}"),
+            download_comments=False,
+            save_metadata=False,
+            quiet=True,
+            max_connection_attempts=1,
+            request_timeout=INSTALOADER_TIMEOUT,
+        )
+
+        if cookie_path:
+            cookies = MozillaCookieJar(str(cookie_path))
+            cookies.load(ignore_discard=True, ignore_expires=True)
+            loader.context._session.cookies.update(cookies)
+
+        post = Post.from_shortcode(loader.context, match.group(1))
+        loader.download_post(post, target="instagram")
+
+    except Exception as exc:
+        logger.warning(
+            "Instaloader fallback failed: %s",
+            type(exc).__name__,
+        )
+
+
 def _download_sync(url):
     DOWNLOAD_DIR.mkdir(parents=True, exist_ok=True)
     work_dir = Path(tempfile.mkdtemp(prefix="job_", dir=DOWNLOAD_DIR))
@@ -151,6 +187,10 @@ def _download_sync(url):
 
         if not valid_files:
             _download_images_with_gallery_dl(url, work_dir, cookie_path)
+            valid_files, oversized_files = _find_valid_files(work_dir)
+
+        if not valid_files:
+            _download_images_with_instaloader(url, work_dir, cookie_path)
             valid_files, oversized_files = _find_valid_files(work_dir)
 
         if not valid_files:

@@ -1,5 +1,7 @@
+import sys
 from pathlib import Path
 from subprocess import CompletedProcess
+from types import SimpleNamespace
 
 import instadlbot.downloader as downloader
 
@@ -91,7 +93,6 @@ def test_gallery_dl_fallback_uses_bounded_file_size(tmp_path, monkeypatch):
     assert captured["command"][size_index + 1] == str(downloader.MAX_FILE_SIZE)
 
 
-
 def test_find_valid_files_discovers_nested_gallery_dl_output(tmp_path):
     nested_dir = tmp_path / "instagram" / "user" / "post"
     nested_dir.mkdir(parents=True)
@@ -141,3 +142,71 @@ def test_gallery_dl_timeout_still_recovers_downloaded_files(tmp_path, monkeypatc
         assert info["description"] == "Photo post caption"
     finally:
         downloader.cleanup_download(work_dir)
+
+
+def test_instaloader_fallback_downloads_post_media(tmp_path, monkeypatch):
+    monkeypatch.setattr(downloader, "DOWNLOAD_DIR", tmp_path)
+    monkeypatch.setattr(downloader, "write_cookies_file", lambda: None)
+
+    class FakeYoutubeDL:
+        def __init__(self, options):
+            self.options = options
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, traceback):
+            return False
+
+        def extract_info(self, url, download):
+            return {"description": "Post caption", "entries": [None]}
+
+    monkeypatch.setattr(downloader.yt_dlp, "YoutubeDL", FakeYoutubeDL)
+    monkeypatch.setattr(
+        downloader,
+        "_download_images_with_gallery_dl",
+        lambda url, work_dir, cookie_path: None,
+    )
+
+    class FakeSessionCookies:
+        def update(self, cookies):
+            pass
+
+    class FakeInstaloader:
+        def __init__(self, **kwargs):
+            self.context = SimpleNamespace(
+                _session=SimpleNamespace(cookies=FakeSessionCookies())
+            )
+            self.output_dir = Path(kwargs["dirname_pattern"].replace("{target}", "instagram"))
+
+        def download_post(self, post, target):
+            self.output_dir.mkdir(parents=True)
+            (self.output_dir / "instaloader-photo.jpg").write_bytes(b"image")
+
+    fake_module = SimpleNamespace(
+        Instaloader=FakeInstaloader,
+    )
+    fake_post = SimpleNamespace(
+        from_shortcode=lambda context, shortcode: shortcode,
+    )
+    fake_module.Post = fake_post
+    monkeypatch.setitem(sys.modules, "instaloader", fake_module)
+
+    work_dir, files, info = downloader._download_sync(
+        "https://www.instagram.com/p/ABC123/"
+    )
+
+    try:
+        assert [path.name for path in files] == ["instaloader-photo.jpg"]
+        assert info["description"] == "Post caption"
+    finally:
+        downloader.cleanup_download(work_dir)
+
+
+def test_instaloader_fallback_extracts_shortcode():
+    match = downloader.re.search(
+        r"/(?:p|reel|reels|tv)/([^/?#]+)",
+        "https://www.instagram.com/reel/ABC123/",
+        downloader.re.IGNORECASE,
+    )
+    assert match.group(1) == "ABC123"
