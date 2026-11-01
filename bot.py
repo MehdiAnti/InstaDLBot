@@ -184,7 +184,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             caption = build_media_caption(info)
             await send_media(context.bot, message.chat_id, files, caption)
 
-            await status.edit_text(f"✅ Done — {len(files)} file(s) sent.")
         except DownloadError as exc:
             await status.edit_text(f"❌ {exc}")
         except Exception:
