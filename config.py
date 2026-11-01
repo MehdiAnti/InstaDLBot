@@ -19,7 +19,7 @@ DOWNLOAD_TIMEOUT = max(30, int(os.getenv("DOWNLOAD_TIMEOUT", "180")))
 INSTAGRAM_COOKIES_BASE64 = os.getenv("INSTAGRAM_COOKIES_BASE64", "").strip()
 DOWNLOAD_DIR = Path(os.getenv("DOWNLOAD_DIR", "/tmp/instadlbot"))
 URL_PATTERN = re.compile(
-    r"^https?://(?:www\.)?(?:instagram\.com|instagr\.am)/(?:reel|reels|p|tv|stories)/[A-Za-z0-9_.-]+/?(?:\?.*)?$",
+    r"^https?://(?:www\.)?(?:instagram\.com|instagr\.am)/(?:reel|reels|p|tv)/[A-Za-z0-9_.-]+/?(?:\?.*)?$",
     re.IGNORECASE,
 )
 
