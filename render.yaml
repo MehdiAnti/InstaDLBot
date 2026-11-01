@@ -3,6 +3,7 @@ services:
     name: instadlbot
     runtime: python
     plan: free
+    healthCheckPath: /health
     buildCommand: pip install -r requirements.txt
     startCommand: gunicorn --chdir src instadlbot.app:app --worker-class uvicorn_worker.UvicornWorker --workers 1 --bind 0.0.0.0:$PORT --timeout 300
     envVars:
