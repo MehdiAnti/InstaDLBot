@@ -8,6 +8,8 @@ A Telegram bot that downloads Instagram Reels, posts, photos, videos, and carous
 - Carousel downloads with multiple photos and videos
 - Best available media format
 - Telegram status messages and clear error handling
+- Private chat and group chat support
+- Original Instagram caption on the first delivered media item, with an @InstaDLPBot footer
 - Concurrent download limit
 - Temporary download cleanup
 - Optional Instagram cookies for content accessible to your account
@@ -24,6 +26,7 @@ A Telegram bot that downloads Instagram Reels, posts, photos, videos, and carous
 5. Set `BOT_TOKEN` to the token from BotFather.
 6. Deploy. Render provides `RENDER_EXTERNAL_URL`; the application registers the Telegram webhook automatically.
 7. Open your bot in Telegram and send `/start`.
+8. To receive ordinary Instagram links in groups, open [@BotFather](https://t.me/BotFather), use `/setprivacy`, select your bot, and choose **Disable**. Then remove the bot from the group and add it again so Telegram applies the updated privacy setting. You can also send links as replies to the bot or use supported bot commands while privacy mode is enabled.
 
 Render starts the app with Gunicorn and the Uvicorn worker. It is configured with one worker because the Telegram application and update queue are held in process memory.
 
@@ -90,5 +93,7 @@ Send a supported Instagram URL to the bot:
 - `https://www.instagram.com/reel/...`
 - `https://www.instagram.com/p/...`
 - `https://www.instagram.com/tv/...`
+
+In groups, the bot processes links sent by group members when Telegram's bot privacy mode is disabled. The original Instagram caption is attached to the first delivered photo or video, followed by `@InstaDLPBot`. Instagram may not expose a caption for every post.
 
 Only download content you are allowed to access. Respect creators' rights and Instagram's terms.
