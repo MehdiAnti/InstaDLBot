@@ -10,7 +10,8 @@ Exact Python package versions are maintained in `requirements.txt`. Development-
 | Uvicorn | ASGI server | Uvicorn worker used by Gunicorn |
 | Gunicorn | Process manager | `uvicorn_worker.UvicornWorker`, one worker |
 | python-telegram-bot | Telegram integration | `Application`, `Update`, `MessageHandler`, `filters`, `HTTPXRequest`, media input classes, bot send and webhook methods |
-| yt-dlp | Instagram extraction and download | `yt_dlp.YoutubeDL`, `YoutubeDL.extract_info`, downloader options |
+| yt-dlp | Instagram Reels and video extraction and download | `yt_dlp.YoutubeDL`, `YoutubeDL.extract_info`, downloader options |
+| gallery-dl | Instagram image posts and photo carousels; used when yt-dlp does not produce media files | Python module CLI, Instagram extractor, cookie-file support |
 | pytest | Unit tests | Test discovery and assertion runner; development dependency |
 
 ## System dependency
