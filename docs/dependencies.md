@@ -37,6 +37,10 @@ FastAPI validates `X-Telegram-Bot-Api-Secret-Token` before queue insertion. `Upd
 
 A fresh `YoutubeDL` instance is created for each download job. The format selector prefers MP4 when available and falls back to the best available format. Playlist handling remains enabled for carousel content. Output files are filtered by supported extension and file size.
 
+### Instagram photo fallback
+
+yt-dlp remains the primary downloader for Reels and video media. Instagram photo-only posts are handled by gallery-dl because yt-dlp does not provide image-post downloading. The fallback uses the same optional Netscape cookies file, writes into the job's temporary directory, disables external gallery-dl configuration, and enforces the configured per-file size limit. The normal file validation and cleanup path applies to both downloaders.
+
 ### Thread offloading and timeout
 
 `YoutubeDL.extract_info` is synchronous, so `_download_sync` runs through `asyncio.to_thread`. `asyncio.wait_for` enforces the configured timeout. A running thread cannot be forcibly stopped; if it finishes after timeout, a completion callback cleans its temporary directory.
