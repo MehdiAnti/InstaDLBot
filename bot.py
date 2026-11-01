@@ -18,7 +18,7 @@ from downloader import DownloadError, cleanup_download, download_media
 
 logger = logging.getLogger(__name__)
 DOWNLOAD_SEMAPHORE = asyncio.Semaphore(MAX_CONCURRENT_DOWNLOADS)
-URL_EXTRACTOR = re.compile(r"https?://[^\\s<>]+", re.IGNORECASE)
+URL_EXTRACTOR = re.compile(r"https?://[^\s<>]+", re.IGNORECASE)
 BOT_FOOTER = "@InstaDLPBot"
 MAX_CAPTION_LENGTH = 1024
 
@@ -33,7 +33,7 @@ def extract_instagram_url(text):
 
 def build_media_caption(info):
     description = info.get("description") or ""
-    caption = f"{str(description).strip()}\\n\\n{BOT_FOOTER}".strip()
+    caption = f"{str(description).strip()}\n\n{BOT_FOOTER}".strip()
     encoded = caption.encode("utf-16-le")
     max_bytes = MAX_CAPTION_LENGTH * 2
 
@@ -54,9 +54,9 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.effective_message.reply_text(
-        "Supported links: Instagram posts, Reels, and carousels.\\n"
-        "You can use the bot in private chats and groups.\\n"
-        "Private posts and content requiring an account may not be accessible.\\n"
+        "Supported links: Instagram posts, Reels, and carousels.\n"
+        "You can use the bot in private chats and groups.\n"
+        "Private posts and content requiring an account may not be accessible.\n"
         f"Maximum file size: {MAX_FILE_SIZE_MB} MB."
     )
 
@@ -207,7 +207,7 @@ def build_application(token):
         .concurrent_updates(True)
         .build()
     )
-    application.add_handler(MessageHandler(filters.COMMAND & filters.Regex(r"^/start(?:@\\w+)?$"), start))
-    application.add_handler(MessageHandler(filters.COMMAND & filters.Regex(r"^/help(?:@\\w+)?$"), help_command))
+    application.add_handler(MessageHandler(filters.COMMAND & filters.Regex(r"^/start(?:@\w+)?$"), start))
+    application.add_handler(MessageHandler(filters.COMMAND & filters.Regex(r"^/help(?:@\w+)?$"), help_command))
     application.add_handler(MessageHandler(filters.TEXT | filters.CAPTION, handle_message))
     return application
