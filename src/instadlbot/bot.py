@@ -2,7 +2,7 @@ import asyncio
 import logging
 import re
 
-from telegram import InputMediaPhoto, InputMediaVideo, Update
+from telegram import InputMediaPhoto, InputMediaVideo, ReplyParameters, Update
 from telegram.ext import Application, ContextTypes, MessageHandler, filters
 from telegram.request import HTTPXRequest
 
@@ -62,16 +62,27 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 
-async def send_single(bot, chat_id, kind, path, caption=None):
+async def send_single(bot, chat_id, kind, path, caption=None, reply_to_message_id=None):
+    reply_parameters = (
+        ReplyParameters(message_id=reply_to_message_id)
+        if reply_to_message_id is not None
+        else None
+    )
     with path.open("rb") as media:
         if kind == "photo":
-            await bot.send_photo(chat_id=chat_id, photo=media, caption=caption)
+            await bot.send_photo(
+                chat_id=chat_id,
+                photo=media,
+                caption=caption,
+                reply_parameters=reply_parameters,
+            )
         elif kind == "video":
             await bot.send_video(
                 chat_id=chat_id,
                 video=media,
                 caption=caption,
                 supports_streaming=True,
+                reply_parameters=reply_parameters,
             )
         else:
             await bot.send_document(
@@ -79,13 +90,23 @@ async def send_single(bot, chat_id, kind, path, caption=None):
                 document=media,
                 filename=path.name,
                 caption=caption,
+                reply_parameters=reply_parameters,
             )
 
 
-async def send_group(bot, chat_id, items, caption=None):
+async def send_group(
+    bot, chat_id, items, caption=None, reply_to_message_id=None
+):
+    reply_parameters = (
+        ReplyParameters(message_id=reply_to_message_id)
+        if reply_to_message_id is not None
+        else None
+    )
     if len(items) == 1:
         kind, path = items[0]
-        await send_single(bot, chat_id, kind, path, caption)
+        await send_single(
+            bot, chat_id, kind, path, caption, reply_to_message_id
+        )
         return
 
     media = []
@@ -108,13 +129,17 @@ async def send_group(bot, chat_id, items, caption=None):
                     )
                 )
 
-        await bot.send_media_group(chat_id=chat_id, media=media)
+        await bot.send_media_group(
+            chat_id=chat_id,
+            media=media,
+            reply_parameters=reply_parameters,
+        )
     finally:
         for handle in handles:
             handle.close()
 
 
-async def send_media(bot, chat_id, files, caption):
+async def send_media(bot, chat_id, files, caption, reply_to_message_id=None):
     batch = []
     caption_pending = caption
 
@@ -130,23 +155,31 @@ async def send_media(bot, chat_id, files, caption):
 
         if kind == "document":
             if batch:
-                await send_group(bot, chat_id, batch, caption_pending)
+                await send_group(
+                    bot, chat_id, batch, caption_pending, reply_to_message_id
+                )
                 caption_pending = None
                 batch = []
 
-            await send_single(bot, chat_id, kind, path, caption_pending)
+            await send_single(
+                bot, chat_id, kind, path, caption_pending, reply_to_message_id
+            )
             caption_pending = None
             continue
 
         batch.append((kind, path))
 
         if len(batch) == 10:
-            await send_group(bot, chat_id, batch, caption_pending)
+            await send_group(
+                bot, chat_id, batch, caption_pending, reply_to_message_id
+            )
             caption_pending = None
             batch = []
 
     if batch:
-        await send_group(bot, chat_id, batch, caption_pending)
+        await send_group(
+            bot, chat_id, batch, caption_pending, reply_to_message_id
+        )
 
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -170,7 +203,13 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             work_dir, files, info = await download_media(url)
 
             caption = build_media_caption(info)
-            await send_media(context.bot, message.chat_id, files, caption)
+            await send_media(
+                context.bot,
+                message.chat_id,
+                files,
+                caption,
+                reply_to_message_id=message.message_id,
+            )
 
         except DownloadError as exc:
             await message.reply_text(f"❌ {exc}")
