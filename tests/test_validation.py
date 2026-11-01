@@ -31,7 +31,7 @@ from bot import build_media_caption
 
 def test_caption_includes_instagram_description_and_bot_footer():
     caption = build_media_caption({"description": "Original Instagram caption"})
-    assert caption == "Original Instagram caption\\n\\n@InstaDLPBot"
+    assert caption == "Original Instagram caption\n\n@InstaDLPBot"
 
 
 def test_caption_always_keeps_bot_footer_with_long_description():
