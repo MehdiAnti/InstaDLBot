@@ -1,7 +1,5 @@
 import asyncio
-import glob
 import logging
-import os
 import shutil
 import tempfile
 from pathlib import Path
@@ -91,13 +89,21 @@ def _download_sync(url):
         ) from exc
 
 
-async def download_media(url):
+def _cleanup_late_result(task):
     try:
-        return await asyncio.wait_for(
-            asyncio.to_thread(_download_sync, url),
-            timeout=DOWNLOAD_TIMEOUT,
-        )
+        result = task.result()
+        cleanup_download(result[0])
+    except Exception:
+        pass
+
+
+async def download_media(url):
+    task = asyncio.create_task(asyncio.to_thread(_download_sync, url))
+
+    try:
+        return await asyncio.wait_for(asyncio.shield(task), timeout=DOWNLOAD_TIMEOUT)
     except asyncio.TimeoutError as exc:
+        task.add_done_callback(_cleanup_late_result)
         raise DownloadError("The download took too long. Please try again later.") from exc
 
 
