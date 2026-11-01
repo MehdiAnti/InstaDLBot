@@ -24,3 +24,21 @@ def test_extracts_url_from_message():
 
 def test_rejects_instagram_profile():
     assert extract_instagram_url("https://www.instagram.com/someuser/") is None
+
+
+from bot import build_media_caption
+
+
+def test_caption_includes_instagram_description_and_bot_footer():
+    caption = build_media_caption({"description": "Original Instagram caption"})
+    assert caption == "Original Instagram caption\\n\\n@InstaDLPBot"
+
+
+def test_caption_always_keeps_bot_footer_with_long_description():
+    caption = build_media_caption({"description": "x" * 2000})
+    assert caption.endswith("@InstaDLPBot")
+    assert len(caption.encode("utf-16-le")) // 2 <= 1024
+
+
+def test_caption_uses_footer_when_description_is_missing():
+    assert build_media_caption({}) == "@InstaDLPBot"
