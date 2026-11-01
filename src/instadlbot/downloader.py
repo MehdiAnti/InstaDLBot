@@ -6,7 +6,7 @@ from pathlib import Path
 
 import yt_dlp
 
-from config import (
+from .config import (
     DOWNLOAD_DIR,
     DOWNLOAD_TIMEOUT,
     MAX_FILE_SIZE_MB,

@@ -7,8 +7,8 @@ from fastapi import FastAPI, Header, HTTPException, Request, Response
 from telegram import Update
 from telegram.error import NetworkError
 
-from bot import build_application
-from config import BOT_TOKEN, RENDER_EXTERNAL_URL, WEBHOOK_SECRET
+from .bot import build_application
+from .config import BOT_TOKEN, RENDER_EXTERNAL_URL, WEBHOOK_SECRET
 
 
 logging.basicConfig(
