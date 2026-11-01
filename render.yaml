@@ -1,0 +1,18 @@
+services:
+  - type: web
+    name: instadlbot
+    runtime: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn app:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.12.8
+      - key: BOT_TOKEN
+        sync: false
+      - key: WEBHOOK_SECRET
+        generateValue: true
+      - key: MAX_CONCURRENT_DOWNLOADS
+        value: "2"
+      - key: MAX_FILE_SIZE_MB
+        value: "49"
