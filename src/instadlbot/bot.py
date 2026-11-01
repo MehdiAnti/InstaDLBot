@@ -3,7 +3,6 @@ import logging
 import re
 
 from telegram import InputMediaPhoto, InputMediaVideo, Update
-from telegram.constants import ChatAction
 from telegram.ext import Application, ContextTypes, MessageHandler, filters
 from telegram.request import HTTPXRequest
 
@@ -164,30 +163,19 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not url:
         return
 
-    status = await context.bot.send_message(
-        chat_id=message.chat_id,
-        text="⏳ Queued. Preparing your download...",
-    )
-
     async with DOWNLOAD_SEMAPHORE:
         work_dir = None
         try:
-            await status.edit_text("⬇️ Downloading Instagram media...")
-            await context.bot.send_chat_action(
-                chat_id=message.chat_id,
-                action=ChatAction.UPLOAD_DOCUMENT,
-            )
-
             work_dir, files, info = await download_media(url)
 
             caption = build_media_caption(info)
             await send_media(context.bot, message.chat_id, files, caption)
 
         except DownloadError as exc:
-            await status.edit_text(f"❌ {exc}")
+            await message.reply_text(f"❌ {exc}")
         except Exception:
             logger.exception("Failed to process an Instagram link")
-            await status.edit_text(
+            await message.reply_text(
                 "❌ Telegram could not send this media. It may exceed Telegram's "
                 "upload limits. Try another post or a smaller file."
             )
