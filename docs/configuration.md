@@ -14,7 +14,7 @@ All settings are read from environment variables. Required settings are validate
 | `INSTAGRAM_COOKIES_BASE64` | No | Empty | Base64-encoded Netscape-format cookies data |
 | `DOWNLOAD_DIR` | No | `/tmp/instadlbot` | Parent directory for temporary jobs and optional cookies |
 
-The default 47 MiB download cap leaves a margin below Telegram's standard 50 MB bot upload ceiling. Images larger than Telegram's 10 MB `sendPhoto` limit are sent as documents instead. Files above the configured per-file cap are skipped.
+The default 47 MiB download cap leaves a margin below Telegram's standard 50 MB bot upload ceiling. Images above the bot's conservative 9 MiB `sendPhoto` threshold are sent as documents instead. Files above the configured per-file cap are skipped.
 
 ## Restricting access
 
