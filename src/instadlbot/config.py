@@ -14,7 +14,7 @@ ALLOWED_USER_IDS = {
     if value.strip().isdigit()
 }
 MAX_CONCURRENT_DOWNLOADS = max(1, int(os.getenv("MAX_CONCURRENT_DOWNLOADS", "2")))
-MAX_FILE_SIZE_MB = max(1, int(os.getenv("MAX_FILE_SIZE_MB", "49")))
+MAX_FILE_SIZE_MB = max(1, int(os.getenv("MAX_FILE_SIZE_MB", "47")))
 DOWNLOAD_TIMEOUT = max(30, int(os.getenv("DOWNLOAD_TIMEOUT", "180")))
 INSTAGRAM_COOKIES_BASE64 = os.getenv("INSTAGRAM_COOKIES_BASE64", "").strip()
 DOWNLOAD_DIR = Path(os.getenv("DOWNLOAD_DIR", "/tmp/instadlbot"))
