@@ -7,13 +7,13 @@ from telegram.constants import ChatAction
 from telegram.ext import Application, ContextTypes, MessageHandler, filters
 from telegram.request import HTTPXRequest
 
-from config import (
+from .config import (
     ALLOWED_USER_IDS,
     MAX_CONCURRENT_DOWNLOADS,
     MAX_FILE_SIZE_MB,
     URL_PATTERN,
 )
-from downloader import DownloadError, cleanup_download, download_media
+from .downloader import DownloadError, cleanup_download, download_media
 
 
 logger = logging.getLogger(__name__)
