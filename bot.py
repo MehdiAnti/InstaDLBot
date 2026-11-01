@@ -5,6 +5,7 @@ import re
 from telegram import InputMediaPhoto, InputMediaVideo, Update
 from telegram.constants import ChatAction
 from telegram.ext import Application, ContextTypes, MessageHandler, filters
+from telegram.request import HTTPXRequest
 
 from config import (
     ALLOWED_USER_IDS,
@@ -17,7 +18,7 @@ from downloader import DownloadError, cleanup_download, download_media
 
 logger = logging.getLogger(__name__)
 DOWNLOAD_SEMAPHORE = asyncio.Semaphore(MAX_CONCURRENT_DOWNLOADS)
-URL_EXTRACTOR = re.compile(r"https?://[^\s<>]+", re.IGNORECASE)
+URL_EXTRACTOR = re.compile(r"https?://[^\\s<>]+", re.IGNORECASE)
 
 
 def extract_instagram_url(text):
@@ -37,8 +38,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
-        "Supported links: Instagram posts, Reels, and carousels.\n"
-        "Private posts and content requiring an account may not be accessible.\n"
+        "Supported links: Instagram posts, Reels, and carousels.\\n"
+        "Private posts and content requiring an account may not be accessible.\\n"
         f"Maximum file size: {MAX_FILE_SIZE_MB} MB."
     )
 
@@ -140,7 +141,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             if len(title) > 100:
                 title = title[:97] + "..."
 
-            await status.edit_text(f"✅ Done — {len(files)} file(s) sent.\n{title}")
+            await status.edit_text(f"✅ Done — {len(files)} file(s) sent.\\n{title}")
         except DownloadError as exc:
             await status.edit_text(f"❌ {exc}")
         except Exception:
@@ -154,8 +155,22 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 def build_application(token):
-    application = Application.builder().token(token).concurrent_updates(True).build()
-    application.add_handler(MessageHandler(filters.COMMAND & filters.Regex(r"^/start(?:@\w+)?$"), start))
-    application.add_handler(MessageHandler(filters.COMMAND & filters.Regex(r"^/help(?:@\w+)?$"), help_command))
+    request = HTTPXRequest(
+        connection_pool_size=20,
+        connect_timeout=30,
+        read_timeout=60,
+        write_timeout=60,
+        pool_timeout=30,
+        media_write_timeout=120,
+    )
+    application = (
+        Application.builder()
+        .token(token)
+        .request(request)
+        .concurrent_updates(True)
+        .build()
+    )
+    application.add_handler(MessageHandler(filters.COMMAND & filters.Regex(r"^/start(?:@\\w+)?$"), start))
+    application.add_handler(MessageHandler(filters.COMMAND & filters.Regex(r"^/help(?:@\\w+)?$"), help_command))
     application.add_handler(MessageHandler(filters.TEXT | filters.CAPTION, handle_message))
     return application
