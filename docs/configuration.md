@@ -9,10 +9,12 @@ All settings are read from environment variables. Required settings are validate
 | `RENDER_EXTERNAL_URL` | No | Empty | Public base URL; when set, webhook is registered at `/telegram` |
 | `ALLOWED_USER_IDS` | No | Empty | Comma-separated numeric Telegram user IDs allowed to use the bot |
 | `MAX_CONCURRENT_DOWNLOADS` | No | `2` | Concurrent download limit; values are clamped to at least 1 |
-| `MAX_FILE_SIZE_MB` | No | `49` | Per-file download limit in MiB; values are clamped to at least 1 |
+| `MAX_FILE_SIZE_MB` | No | `47` | Maximum size of each downloaded file in MiB; values are clamped to at least 1 |
 | `DOWNLOAD_TIMEOUT` | No | `180` | Download timeout in seconds; values are clamped to at least 30 |
 | `INSTAGRAM_COOKIES_BASE64` | No | Empty | Base64-encoded Netscape-format cookies data |
 | `DOWNLOAD_DIR` | No | `/tmp/instadlbot` | Parent directory for temporary jobs and optional cookies |
+
+The default 47 MiB download cap leaves a margin below Telegram's standard 50 MB bot upload ceiling. Images above the bot's conservative 9 MiB `sendPhoto` threshold are sent as documents instead. Files above the configured per-file cap are skipped.
 
 ## Restricting access
 
