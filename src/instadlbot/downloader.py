@@ -1,4 +1,5 @@
 import asyncio
+import json
 import logging
 import re
 import shutil
@@ -65,6 +66,23 @@ def _find_valid_files(work_dir):
     return valid_files, oversized_files
 
 
+def _read_gallery_info(work_dir):
+    for path in sorted(work_dir.rglob("*.json")):
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, UnicodeError, json.JSONDecodeError):
+            continue
+
+        if not isinstance(data, dict):
+            continue
+
+        description = data.get("description") or data.get("caption")
+        if description:
+            return {"description": str(description)}
+
+    return {}
+
+
 def _download_images_with_gallery_dl(url, work_dir, cookie_path):
     command = [
         sys.executable,
@@ -75,6 +93,7 @@ def _download_images_with_gallery_dl(url, work_dir, cookie_path):
         "--no-mtime",
         "--no-part",
         "--quiet",
+        "--write-info-json",
         "--filesize-max",
         str(MAX_FILE_SIZE),
         "--directory",
@@ -99,25 +118,28 @@ def _download_images_with_gallery_dl(url, work_dir, cookie_path):
         if isinstance(diagnostic, bytes):
             diagnostic = diagnostic.decode(errors="replace")
         logger.warning(
-            "gallery-dl image fallback timed out after %s seconds: %s",
+            "gallery-dl fallback timed out after %s seconds: %s",
             GALLERY_DL_TIMEOUT,
             str(diagnostic).strip()[-1000:] or "No diagnostic output",
         )
-        return
+        return False
 
     if result.returncode:
         diagnostic = (result.stderr or result.stdout or "").strip()
         logger.warning(
-            "gallery-dl image fallback exited with status %s: %s",
+            "gallery-dl fallback exited with status %s: %s",
             result.returncode,
             diagnostic[-1500:] or "No diagnostic output",
         )
+        return False
+
+    return True
 
 
 def _download_images_with_instaloader(url, work_dir, cookie_path):
     match = re.search(r"/(?:p|reel|reels|tv)/([^/?#]+)", url, re.IGNORECASE)
     if not match:
-        return
+        return {}
 
     try:
         import instaloader
@@ -139,12 +161,46 @@ def _download_images_with_instaloader(url, work_dir, cookie_path):
 
         post = Post.from_shortcode(loader.context, match.group(1))
         loader.download_post(post, target="instagram")
+        return {"description": str(post.caption or "")}
 
     except Exception as exc:
         logger.warning(
             "Instaloader fallback failed: %s",
             type(exc).__name__,
         )
+        return {}
+
+
+def _download_with_yt_dlp(url, work_dir, cookie_path):
+    options = {
+        "outtmpl": str(work_dir / "%(autonumber)02d_%(id)s.%(ext)s"),
+        "format": "best[ext=mp4]/best",
+        "merge_output_format": "mp4",
+        "noplaylist": False,
+        "ignoreerrors": True,
+        "quiet": True,
+        "no_warnings": True,
+        "restrictfilenames": True,
+        "socket_timeout": 20,
+        "retries": 2,
+        "fragment_retries": 2,
+        "max_filesize": MAX_FILE_SIZE,
+        "writethumbnail": False,
+        "extractor_retries": 2,
+    }
+
+    if cookie_path:
+        options["cookiefile"] = str(cookie_path)
+
+    try:
+        with yt_dlp.YoutubeDL(options) as ydl:
+            return ydl.extract_info(url, download=True) or {}
+    except Exception as exc:
+        logger.info(
+            "yt-dlp did not extract media; trying fallback (%s)",
+            type(exc).__name__,
+        )
+        return {}
 
 
 def _download_sync(url):
@@ -153,45 +209,32 @@ def _download_sync(url):
 
     try:
         cookie_path = write_cookies_file()
-        options = {
-            "outtmpl": str(work_dir / "%(autonumber)02d_%(id)s.%(ext)s"),
-            "format": "best[ext=mp4]/best",
-            "merge_output_format": "mp4",
-            "noplaylist": False,
-            "ignoreerrors": True,
-            "quiet": True,
-            "no_warnings": True,
-            "restrictfilenames": True,
-            "socket_timeout": 20,
-            "retries": 2,
-            "fragment_retries": 2,
-            "max_filesize": MAX_FILE_SIZE,
-            "writethumbnail": False,
-            "extractor_retries": 2,
-        }
+        is_post = bool(re.search(r"/p/", url, re.IGNORECASE))
 
-        if cookie_path:
-            options["cookiefile"] = str(cookie_path)
-
-        info = {}
-        try:
-            with yt_dlp.YoutubeDL(options) as ydl:
-                info = ydl.extract_info(url, download=True) or {}
-        except Exception as exc:
-            logger.info(
-                "yt-dlp did not extract media; trying image fallback (%s)",
-                type(exc).__name__,
-            )
-
-        valid_files, oversized_files = _find_valid_files(work_dir)
-
-        if not valid_files:
+        if is_post:
             _download_images_with_gallery_dl(url, work_dir, cookie_path)
             valid_files, oversized_files = _find_valid_files(work_dir)
+            info = _read_gallery_info(work_dir)
 
-        if not valid_files:
-            _download_images_with_instaloader(url, work_dir, cookie_path)
+            if not valid_files:
+                info = _download_images_with_instaloader(
+                    url, work_dir, cookie_path
+                ) or info
+                valid_files, oversized_files = _find_valid_files(work_dir)
+        else:
+            info = _download_with_yt_dlp(url, work_dir, cookie_path)
             valid_files, oversized_files = _find_valid_files(work_dir)
+
+            if not valid_files:
+                _download_images_with_gallery_dl(url, work_dir, cookie_path)
+                valid_files, oversized_files = _find_valid_files(work_dir)
+                info = info or _read_gallery_info(work_dir)
+
+            if not valid_files:
+                info = _download_images_with_instaloader(
+                    url, work_dir, cookie_path
+                ) or info
+                valid_files, oversized_files = _find_valid_files(work_dir)
 
         if not valid_files:
             if oversized_files:

@@ -1,3 +1,4 @@
+import json
 import sys
 from pathlib import Path
 from subprocess import CompletedProcess
@@ -6,24 +7,14 @@ from types import SimpleNamespace
 import instadlbot.downloader as downloader
 
 
-def test_photo_only_post_uses_gallery_dl_fallback(tmp_path, monkeypatch):
+def test_photo_only_post_uses_gallery_dl_without_yt_dlp(tmp_path, monkeypatch):
     monkeypatch.setattr(downloader, "DOWNLOAD_DIR", tmp_path)
     monkeypatch.setattr(downloader, "write_cookies_file", lambda: None)
 
-    class FakeYoutubeDL:
-        def __init__(self, options):
-            self.options = options
+    def unexpected_ytdlp(*args, **kwargs):
+        raise AssertionError("yt-dlp must not process Instagram post URLs")
 
-        def __enter__(self):
-            return self
-
-        def __exit__(self, exc_type, exc, traceback):
-            return False
-
-        def extract_info(self, url, download):
-            return {"description": "Photo post caption", "entries": [None, None]}
-
-    monkeypatch.setattr(downloader.yt_dlp, "YoutubeDL", FakeYoutubeDL)
+    monkeypatch.setattr(downloader.yt_dlp, "YoutubeDL", unexpected_ytdlp)
 
     captured = {}
 
@@ -31,8 +22,13 @@ def test_photo_only_post_uses_gallery_dl_fallback(tmp_path, monkeypatch):
         captured["command"] = command
         captured["kwargs"] = kwargs
         output_dir = Path(command[command.index("--directory") + 1])
+        output_dir.mkdir(parents=True, exist_ok=True)
         (output_dir / "photo_1.jpg").write_bytes(b"image-one")
         (output_dir / "photo_2.jpg").write_bytes(b"image-two")
+        (output_dir / "photo_1.jpg.json").write_text(
+            json.dumps({"description": "Photo post caption"}),
+            encoding="utf-8",
+        )
         return CompletedProcess(command, 0, "", "")
 
     monkeypatch.setattr(downloader.subprocess, "run", fake_run)
@@ -45,8 +41,85 @@ def test_photo_only_post_uses_gallery_dl_fallback(tmp_path, monkeypatch):
         assert [path.name for path in files] == ["photo_1.jpg", "photo_2.jpg"]
         assert info["description"] == "Photo post caption"
         assert "--config-ignore" in captured["command"]
+        assert "--write-info-json" in captured["command"]
         assert "--filesize-max" in captured["command"]
         assert captured["kwargs"]["check"] is False
+    finally:
+        downloader.cleanup_download(work_dir)
+
+
+def test_mixed_carousel_downloads_photos_and_videos_together(tmp_path, monkeypatch):
+    monkeypatch.setattr(downloader, "DOWNLOAD_DIR", tmp_path)
+    monkeypatch.setattr(downloader, "write_cookies_file", lambda: None)
+
+    def unexpected_ytdlp(*args, **kwargs):
+        raise AssertionError("yt-dlp must not split mixed post carousels")
+
+    monkeypatch.setattr(downloader.yt_dlp, "YoutubeDL", unexpected_ytdlp)
+
+    def fake_run(command, **kwargs):
+        output_dir = Path(command[command.index("--directory") + 1])
+        output_dir.mkdir(parents=True, exist_ok=True)
+        (output_dir / "01-photo.jpg").write_bytes(b"image")
+        (output_dir / "02-video.mp4").write_bytes(b"video")
+        (output_dir / "01-photo.jpg.json").write_text(
+            json.dumps({"description": "Mixed carousel caption"}),
+            encoding="utf-8",
+        )
+        return CompletedProcess(command, 0, "", "")
+
+    monkeypatch.setattr(downloader.subprocess, "run", fake_run)
+
+    work_dir, files, info = downloader._download_sync(
+        "https://www.instagram.com/p/MIXED123/"
+    )
+
+    try:
+        assert [path.suffix for path in files] == [".jpg", ".mp4"]
+        assert info["description"] == "Mixed carousel caption"
+    finally:
+        downloader.cleanup_download(work_dir)
+
+
+def test_reel_uses_yt_dlp_before_fallbacks(tmp_path, monkeypatch):
+    monkeypatch.setattr(downloader, "DOWNLOAD_DIR", tmp_path)
+    monkeypatch.setattr(downloader, "write_cookies_file", lambda: None)
+    calls = {"yt_dlp": 0, "gallery_dl": 0}
+
+    class FakeYoutubeDL:
+        def __init__(self, options):
+            self.options = options
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, traceback):
+            return False
+
+        def extract_info(self, url, download):
+            calls["yt_dlp"] += 1
+            output_path = Path(self.options["outtmpl"].replace(
+                "%(autonumber)02d_%(id)s.%(ext)s", "01_REEL.mp4"
+            ))
+            output_path.write_bytes(b"video")
+            return {"description": "Reel caption"}
+
+    monkeypatch.setattr(downloader.yt_dlp, "YoutubeDL", FakeYoutubeDL)
+
+    def unexpected_gallery(*args, **kwargs):
+        calls["gallery_dl"] += 1
+        raise AssertionError("gallery-dl should not run after a successful Reel")
+
+    monkeypatch.setattr(downloader, "_download_images_with_gallery_dl", unexpected_gallery)
+
+    work_dir, files, info = downloader._download_sync(
+        "https://www.instagram.com/reel/REEL123/"
+    )
+
+    try:
+        assert [path.suffix for path in files] == [".mp4"]
+        assert info["description"] == "Reel caption"
+        assert calls == {"yt_dlp": 1, "gallery_dl": 0}
     finally:
         downloader.cleanup_download(work_dir)
 
@@ -109,26 +182,20 @@ def test_gallery_dl_timeout_still_recovers_downloaded_files(tmp_path, monkeypatc
     monkeypatch.setattr(downloader, "DOWNLOAD_DIR", tmp_path)
     monkeypatch.setattr(downloader, "write_cookies_file", lambda: None)
 
-    class FakeYoutubeDL:
-        def __init__(self, options):
-            self.options = options
+    def unexpected_ytdlp(*args, **kwargs):
+        raise AssertionError("yt-dlp must not process Instagram post URLs")
 
-        def __enter__(self):
-            return self
-
-        def __exit__(self, exc_type, exc, traceback):
-            return False
-
-        def extract_info(self, url, download):
-            return {"description": "Photo post caption", "entries": [None]}
-
-    monkeypatch.setattr(downloader.yt_dlp, "YoutubeDL", FakeYoutubeDL)
+    monkeypatch.setattr(downloader.yt_dlp, "YoutubeDL", unexpected_ytdlp)
 
     def fake_run(command, **kwargs):
         output_dir = Path(command[command.index("--directory") + 1])
         nested_dir = output_dir / "instagram" / "user" / "post"
         nested_dir.mkdir(parents=True)
         (nested_dir / "photo.jpg").write_bytes(b"image")
+        (nested_dir / "photo.jpg.json").write_text(
+            json.dumps({"description": "Photo post caption"}),
+            encoding="utf-8",
+        )
         raise downloader.subprocess.TimeoutExpired(command, kwargs["timeout"])
 
     monkeypatch.setattr(downloader.subprocess, "run", fake_run)
@@ -148,24 +215,14 @@ def test_instaloader_fallback_downloads_post_media(tmp_path, monkeypatch):
     monkeypatch.setattr(downloader, "DOWNLOAD_DIR", tmp_path)
     monkeypatch.setattr(downloader, "write_cookies_file", lambda: None)
 
-    class FakeYoutubeDL:
-        def __init__(self, options):
-            self.options = options
+    def unexpected_ytdlp(*args, **kwargs):
+        raise AssertionError("yt-dlp must not process Instagram post URLs")
 
-        def __enter__(self):
-            return self
-
-        def __exit__(self, exc_type, exc, traceback):
-            return False
-
-        def extract_info(self, url, download):
-            return {"description": "Post caption", "entries": [None]}
-
-    monkeypatch.setattr(downloader.yt_dlp, "YoutubeDL", FakeYoutubeDL)
+    monkeypatch.setattr(downloader.yt_dlp, "YoutubeDL", unexpected_ytdlp)
     monkeypatch.setattr(
         downloader,
         "_download_images_with_gallery_dl",
-        lambda url, work_dir, cookie_path: None,
+        lambda url, work_dir, cookie_path: False,
     )
 
     class FakeSessionCookies:
@@ -177,17 +234,19 @@ def test_instaloader_fallback_downloads_post_media(tmp_path, monkeypatch):
             self.context = SimpleNamespace(
                 _session=SimpleNamespace(cookies=FakeSessionCookies())
             )
-            self.output_dir = Path(kwargs["dirname_pattern"].replace("{target}", "instagram"))
+            self.output_dir = Path(
+                kwargs["dirname_pattern"].replace("{target}", "instagram")
+            )
 
         def download_post(self, post, target):
             self.output_dir.mkdir(parents=True)
             (self.output_dir / "instaloader-photo.jpg").write_bytes(b"image")
 
-    fake_module = SimpleNamespace(
-        Instaloader=FakeInstaloader,
-    )
+    fake_module = SimpleNamespace(Instaloader=FakeInstaloader)
     fake_post = SimpleNamespace(
-        from_shortcode=lambda context, shortcode: shortcode,
+        from_shortcode=lambda context, shortcode: SimpleNamespace(
+            caption="Instaloader caption"
+        ),
     )
     fake_module.Post = fake_post
     monkeypatch.setitem(sys.modules, "instaloader", fake_module)
@@ -198,7 +257,7 @@ def test_instaloader_fallback_downloads_post_media(tmp_path, monkeypatch):
 
     try:
         assert [path.name for path in files] == ["instaloader-photo.jpg"]
-        assert info["description"] == "Post caption"
+        assert info["description"] == "Instaloader caption"
     finally:
         downloader.cleanup_download(work_dir)
 
