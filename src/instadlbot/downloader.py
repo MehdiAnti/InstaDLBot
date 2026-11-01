@@ -72,7 +72,7 @@ def _download_images_with_gallery_dl(url, work_dir, cookie_path):
         "--no-part",
         "--quiet",
         "--filesize-max",
-        f"{MAX_FILE_SIZE}B",
+        str(MAX_FILE_SIZE),
         "--directory",
         str(work_dir),
     ]
@@ -95,9 +95,11 @@ def _download_images_with_gallery_dl(url, work_dir, cookie_path):
         return
 
     if result.returncode:
+        diagnostic = (result.stderr or result.stdout or "").strip()
         logger.warning(
-            "gallery-dl image fallback exited with status %s",
+            "gallery-dl image fallback exited with status %s: %s",
             result.returncode,
+            diagnostic[-1500:] or "No diagnostic output",
         )
 
 
