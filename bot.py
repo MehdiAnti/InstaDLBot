@@ -141,12 +141,12 @@ async def send_media(bot, chat_id, files, caption):
         batch.append((kind, path))
 
         if len(batch) == 10:
-            await send_group(message, batch, caption_pending)
+            await send_group(bot, chat_id, batch, caption_pending)
             caption_pending = None
             batch = []
 
     if batch:
-        await send_group(message, batch, caption_pending)
+        await send_group(bot, chat_id, batch, caption_pending)
 
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
