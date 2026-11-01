@@ -1,6 +1,8 @@
 import asyncio
 import logging
 import shutil
+import subprocess
+import sys
 import tempfile
 from pathlib import Path
 
@@ -16,11 +18,87 @@ from .config import (
 
 logger = logging.getLogger(__name__)
 MAX_FILE_SIZE = MAX_FILE_SIZE_MB * 1024 * 1024
-SUPPORTED_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp", ".mp4", ".m4v", ".mov"}
+SUPPORTED_EXTENSIONS = {
+    ".jpg",
+    ".jpeg",
+    ".png",
+    ".webp",
+    ".avif",
+    ".gif",
+    ".mp4",
+    ".m4v",
+    ".mov",
+}
 
 
 class DownloadError(Exception):
     pass
+
+
+def _find_valid_files(work_dir):
+    files = sorted(
+        path for path in work_dir.iterdir()
+        if path.is_file() and path.suffix.lower() in SUPPORTED_EXTENSIONS
+    )
+
+    valid_files = []
+    oversized_files = []
+
+    for path in files:
+        try:
+            size = path.stat().st_size
+        except OSError:
+            continue
+
+        if not size:
+            continue
+
+        if size <= MAX_FILE_SIZE:
+            valid_files.append(path)
+        else:
+            oversized_files.append(path)
+
+    return valid_files, oversized_files
+
+
+def _download_images_with_gallery_dl(url, work_dir, cookie_path):
+    command = [
+        sys.executable,
+        "-m",
+        "gallery_dl",
+        "--config-ignore",
+        "--no-input",
+        "--no-mtime",
+        "--no-part",
+        "--quiet",
+        "--filesize-max",
+        f"{MAX_FILE_SIZE}B",
+        "--directory",
+        str(work_dir),
+    ]
+
+    if cookie_path:
+        command.extend(["--cookies", str(cookie_path)])
+
+    command.append(url)
+
+    try:
+        result = subprocess.run(
+            command,
+            capture_output=True,
+            text=True,
+            timeout=DOWNLOAD_TIMEOUT,
+            check=False,
+        )
+    except subprocess.TimeoutExpired:
+        logger.warning("gallery-dl image fallback timed out")
+        return
+
+    if result.returncode:
+        logger.warning(
+            "gallery-dl image fallback exited with status %s",
+            result.returncode,
+        )
 
 
 def _download_sync(url):
@@ -49,30 +127,31 @@ def _download_sync(url):
         if cookie_path:
             options["cookiefile"] = str(cookie_path)
 
-        with yt_dlp.YoutubeDL(options) as ydl:
-            info = ydl.extract_info(url, download=True)
+        info = {}
+        try:
+            with yt_dlp.YoutubeDL(options) as ydl:
+                info = ydl.extract_info(url, download=True) or {}
+        except Exception as exc:
+            logger.info(
+                "yt-dlp did not extract media; trying image fallback (%s)",
+                type(exc).__name__,
+            )
 
-        if not info:
-            raise DownloadError("Instagram did not return any media.")
-
-        files = sorted(
-            path for path in work_dir.iterdir()
-            if path.is_file() and path.suffix.lower() in SUPPORTED_EXTENSIONS
-        )
-
-        valid_files = []
-        for path in files:
-            try:
-                size = path.stat().st_size
-            except OSError:
-                continue
-
-            if size and size <= MAX_FILE_SIZE:
-                valid_files.append(path)
+        valid_files, oversized_files = _find_valid_files(work_dir)
 
         if not valid_files:
+            _download_images_with_gallery_dl(url, work_dir, cookie_path)
+            valid_files, oversized_files = _find_valid_files(work_dir)
+
+        if not valid_files:
+            if oversized_files:
+                raise DownloadError(
+                    f"Media exceeds the {MAX_FILE_SIZE_MB} MiB per-file download limit."
+                )
+
             raise DownloadError(
-                f"No media within the {MAX_FILE_SIZE_MB} MB file limit was downloaded."
+                "Instagram did not provide downloadable media. The post may be "
+                "unavailable, restricted, or temporarily blocked by Instagram."
             )
 
         return work_dir, valid_files, info
@@ -82,7 +161,7 @@ def _download_sync(url):
         raise
     except Exception as exc:
         shutil.rmtree(work_dir, ignore_errors=True)
-        logger.warning("Instagram download failed: %s", exc)
+        logger.warning("Instagram download failed: %s", type(exc).__name__)
         raise DownloadError(
             "Could not download this post. It may be private, unavailable, "
             "age-restricted, or temporarily blocked by Instagram."
