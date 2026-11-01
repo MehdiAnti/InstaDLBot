@@ -5,6 +5,7 @@ import re
 from telegram import InputMediaPhoto, InputMediaVideo, Update
 from telegram.constants import ChatAction
 from telegram.ext import Application, ContextTypes, MessageHandler, filters
+from telegram.request import HTTPXRequest
 
 from config import (
     ALLOWED_USER_IDS,
@@ -154,7 +155,21 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 def build_application(token):
-    application = Application.builder().token(token).concurrent_updates(True).build()
+    request = HTTPXRequest(
+        connection_pool_size=20,
+        connect_timeout=30,
+        read_timeout=60,
+        write_timeout=60,
+        pool_timeout=30,
+        media_write_timeout=120,
+    )
+    application = (
+        Application.builder()
+        .token(token)
+        .request(request)
+        .concurrent_updates(True)
+        .build()
+    )
     application.add_handler(MessageHandler(filters.COMMAND & filters.Regex(r"^/start(?:@\w+)?$"), start))
     application.add_handler(MessageHandler(filters.COMMAND & filters.Regex(r"^/help(?:@\w+)?$"), help_command))
     application.add_handler(MessageHandler(filters.TEXT | filters.CAPTION, handle_message))
