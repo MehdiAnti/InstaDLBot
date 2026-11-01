@@ -18,6 +18,7 @@ from .config import (
 
 logger = logging.getLogger(__name__)
 MAX_FILE_SIZE = MAX_FILE_SIZE_MB * 1024 * 1024
+GALLERY_DL_TIMEOUT = max(1, min(90, DOWNLOAD_TIMEOUT - 15))
 SUPPORTED_EXTENSIONS = {
     ".jpg",
     ".jpeg",
@@ -37,7 +38,7 @@ class DownloadError(Exception):
 
 def _find_valid_files(work_dir):
     files = sorted(
-        path for path in work_dir.iterdir()
+        path for path in work_dir.rglob("*")
         if path.is_file() and path.suffix.lower() in SUPPORTED_EXTENSIONS
     )
 
@@ -87,11 +88,18 @@ def _download_images_with_gallery_dl(url, work_dir, cookie_path):
             command,
             capture_output=True,
             text=True,
-            timeout=DOWNLOAD_TIMEOUT,
+            timeout=GALLERY_DL_TIMEOUT,
             check=False,
         )
-    except subprocess.TimeoutExpired:
-        logger.warning("gallery-dl image fallback timed out")
+    except subprocess.TimeoutExpired as exc:
+        diagnostic = exc.stderr or exc.stdout or ""
+        if isinstance(diagnostic, bytes):
+            diagnostic = diagnostic.decode(errors="replace")
+        logger.warning(
+            "gallery-dl image fallback timed out after %s seconds: %s",
+            GALLERY_DL_TIMEOUT,
+            str(diagnostic).strip()[-1000:] or "No diagnostic output",
+        )
         return
 
     if result.returncode:
