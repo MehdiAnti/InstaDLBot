@@ -62,28 +62,30 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 
-async def send_single(message, kind, path, caption=None):
+async def send_single(bot, chat_id, kind, path, caption=None):
     with path.open("rb") as media:
         if kind == "photo":
-            await message.reply_photo(photo=media, caption=caption)
+            await bot.send_photo(chat_id=chat_id, photo=media, caption=caption)
         elif kind == "video":
-            await message.reply_video(
+            await bot.send_video(
+                chat_id=chat_id,
                 video=media,
                 caption=caption,
                 supports_streaming=True,
             )
         else:
-            await message.reply_document(
+            await bot.send_document(
+                chat_id=chat_id,
                 document=media,
                 filename=path.name,
                 caption=caption,
             )
 
 
-async def send_group(message, items, caption=None):
+async def send_group(bot, chat_id, items, caption=None):
     if len(items) == 1:
         kind, path = items[0]
-        await send_single(message, kind, path, caption)
+        await send_single(bot, chat_id, kind, path, caption)
         return
 
     media = []
@@ -106,13 +108,13 @@ async def send_group(message, items, caption=None):
                     )
                 )
 
-        await message.reply_media_group(media=media)
+        await bot.send_media_group(chat_id=chat_id, media=media)
     finally:
         for handle in handles:
             handle.close()
 
 
-async def send_media(message, files, caption):
+async def send_media(bot, chat_id, files, caption):
     batch = []
     caption_pending = caption
 
@@ -128,23 +130,23 @@ async def send_media(message, files, caption):
 
         if kind == "document":
             if batch:
-                await send_group(message, batch, caption_pending)
+                await send_group(bot, chat_id, batch, caption_pending)
                 caption_pending = None
                 batch = []
 
-            await send_single(message, kind, path, caption_pending)
+            await send_single(bot, chat_id, kind, path, caption_pending)
             caption_pending = None
             continue
 
         batch.append((kind, path))
 
         if len(batch) == 10:
-            await send_group(message, batch, caption_pending)
+            await send_group(bot, chat_id, batch, caption_pending)
             caption_pending = None
             batch = []
 
     if batch:
-        await send_group(message, batch, caption_pending)
+        await send_group(bot, chat_id, batch, caption_pending)
 
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -162,7 +164,10 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not url:
         return
 
-    status = await message.reply_text("⏳ Queued. Preparing your download...")
+    status = await context.bot.send_message(
+        chat_id=message.chat_id,
+        text="⏳ Queued. Preparing your download...",
+    )
 
     async with DOWNLOAD_SEMAPHORE:
         work_dir = None
@@ -177,7 +182,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
             await status.edit_text(f"📤 Sending {len(files)} file(s) to Telegram...")
             caption = build_media_caption(info)
-            await send_media(message, files, caption)
+            await send_media(context.bot, message.chat_id, files, caption)
 
             await status.edit_text(f"✅ Done — {len(files)} file(s) sent.")
         except DownloadError as exc:
