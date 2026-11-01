@@ -18,7 +18,9 @@ from downloader import DownloadError, cleanup_download, download_media
 
 logger = logging.getLogger(__name__)
 DOWNLOAD_SEMAPHORE = asyncio.Semaphore(MAX_CONCURRENT_DOWNLOADS)
-URL_EXTRACTOR = re.compile(r"https?://[^\s<>]+", re.IGNORECASE)
+URL_EXTRACTOR = re.compile(r"https?://[^\\s<>]+", re.IGNORECASE)
+BOT_FOOTER = "@InstaDLPBot"
+MAX_CAPTION_LENGTH = 1024
 
 
 def extract_instagram_url(text):
@@ -29,79 +31,119 @@ def extract_instagram_url(text):
     return None
 
 
+def build_media_caption(info):
+    description = info.get("description") or ""
+    caption = f"{str(description).strip()}\\n\\n{BOT_FOOTER}".strip()
+    encoded = caption.encode("utf-16-le")
+    max_bytes = MAX_CAPTION_LENGTH * 2
+
+    if len(encoded) > max_bytes:
+        encoded = encoded[:max_bytes]
+        caption = encoded.decode("utf-16-le", errors="ignore").rstrip()
+
+    return caption
+
+
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(
+    await update.effective_message.reply_text(
         "Send me a public Instagram post, Reel, or carousel link. "
-        "I will download the available photos and videos and send them here."
+        "I will download the available photos and videos and send them here. "
+        "You can also add me to a group."
     )
 
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(
-        "Supported links: Instagram posts, Reels, and carousels.\n"
-        "Private posts and content requiring an account may not be accessible.\n"
+    await update.effective_message.reply_text(
+        "Supported links: Instagram posts, Reels, and carousels.\\n"
+        "You can use the bot in private chats and groups.\\n"
+        "Private posts and content requiring an account may not be accessible.\\n"
         f"Maximum file size: {MAX_FILE_SIZE_MB} MB."
     )
 
 
-async def send_media(message, files):
-    if len(files) == 1:
-        path = files[0]
-        with path.open("rb") as media:
-            is_photo = path.suffix.lower() in {".jpg", ".jpeg", ".png", ".webp"}
-            if is_photo and path.stat().st_size <= 10 * 1024 * 1024:
-                await message.reply_photo(photo=media)
-            elif is_photo:
-                await message.reply_document(document=media, filename=path.name)
-            else:
-                await message.reply_video(video=media, supports_streaming=True)
+async def send_single(message, kind, path, caption=None):
+    with path.open("rb") as media:
+        if kind == "photo":
+            await message.reply_photo(photo=media, caption=caption)
+        elif kind == "video":
+            await message.reply_video(
+                video=media,
+                caption=caption,
+                supports_streaming=True,
+            )
+        else:
+            await message.reply_document(
+                document=media,
+                filename=path.name,
+                caption=caption,
+            )
+
+
+async def send_group(message, items, caption=None):
+    if len(items) == 1:
+        kind, path = items[0]
+        await send_single(message, kind, path, caption)
         return
 
-    group = []
-    for path in files:
-        if path.suffix.lower() in {".jpg", ".jpeg", ".png", ".webp"} and path.stat().st_size <= 10 * 1024 * 1024:
-            group.append(("photo", path))
-        elif path.suffix.lower() in {".mp4", ".m4v", ".mov"}:
-            group.append(("video", path))
-        else:
-            group.append(("document", path))
-
-    batch = []
-    for kind, path in group:
-        if kind == "document":
-            if batch:
-                await send_group(message, batch)
-                batch = []
-            with path.open("rb") as media:
-                await message.reply_document(document=media, filename=path.name)
-            continue
-
-        batch.append((kind, path))
-        if len(batch) == 10:
-            await send_group(message, batch)
-            batch = []
-
-    if batch:
-        await send_group(message, batch)
-
-
-async def send_group(message, items):
     media = []
     handles = []
 
     try:
-        for kind, path in items:
+        for index, (kind, path) in enumerate(items):
             handle = path.open("rb")
             handles.append(handle)
+            item_caption = caption if index == 0 else None
+
             if kind == "photo":
-                media.append(InputMediaPhoto(media=handle))
+                media.append(InputMediaPhoto(media=handle, caption=item_caption))
             else:
-                media.append(InputMediaVideo(media=handle, supports_streaming=True))
+                media.append(
+                    InputMediaVideo(
+                        media=handle,
+                        caption=item_caption,
+                        supports_streaming=True,
+                    )
+                )
 
         await message.reply_media_group(media=media)
     finally:
         for handle in handles:
             handle.close()
+
+
+async def send_media(message, files, caption):
+    batch = []
+    caption_pending = caption
+
+    for path in files:
+        suffix = path.suffix.lower()
+
+        if suffix in {".jpg", ".jpeg", ".png", ".webp"} and path.stat().st_size <= 10 * 1024 * 1024:
+            kind = "photo"
+        elif suffix in {".mp4", ".m4v", ".mov"}:
+            kind = "video"
+        else:
+            kind = "document"
+
+        if kind == "document":
+            if batch:
+                await send_group(message, batch, caption_pending)
+                caption_pending = None
+                batch = []
+
+            await send_single(message, kind, path, caption_pending)
+            caption_pending = None
+            continue
+
+        batch.append((kind, path))
+
+        if len(batch) == 10:
+            await send_group(message, batch, caption_pending)
+            caption_pending = None
+            batch = []
+
+    if batch:
+        await send_group(message, batch, caption_pending)
 
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -117,7 +159,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     url = extract_instagram_url(message.text or message.caption or "")
     if not url:
-        await message.reply_text("Please send a valid Instagram post, Reel, or carousel URL.")
         return
 
     status = await message.reply_text("⏳ Queued. Preparing your download...")
@@ -134,14 +175,10 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             work_dir, files, info = await download_media(url)
 
             await status.edit_text(f"📤 Sending {len(files)} file(s) to Telegram...")
-            await send_media(message, files)
+            caption = build_media_caption(info)
+            await send_media(message, files, caption)
 
-            title = info.get("title") or info.get("description") or "Instagram media"
-            title = " ".join(str(title).split())
-            if len(title) > 100:
-                title = title[:97] + "..."
-
-            await status.edit_text(f"✅ Done — {len(files)} file(s) sent.\n{title}")
+            await status.edit_text(f"✅ Done — {len(files)} file(s) sent.")
         except DownloadError as exc:
             await status.edit_text(f"❌ {exc}")
         except Exception:
@@ -170,7 +207,7 @@ def build_application(token):
         .concurrent_updates(True)
         .build()
     )
-    application.add_handler(MessageHandler(filters.COMMAND & filters.Regex(r"^/start(?:@\w+)?$"), start))
-    application.add_handler(MessageHandler(filters.COMMAND & filters.Regex(r"^/help(?:@\w+)?$"), help_command))
+    application.add_handler(MessageHandler(filters.COMMAND & filters.Regex(r"^/start(?:@\\w+)?$"), start))
+    application.add_handler(MessageHandler(filters.COMMAND & filters.Regex(r"^/help(?:@\\w+)?$"), help_command))
     application.add_handler(MessageHandler(filters.TEXT | filters.CAPTION, handle_message))
     return application
