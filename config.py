@@ -1,4 +1,5 @@
 import base64
+import binascii
 import os
 import re
 from pathlib import Path
@@ -32,7 +33,7 @@ def write_cookies_file():
 
     try:
         cookie_path.write_bytes(base64.b64decode(INSTAGRAM_COOKIES_BASE64, validate=True))
-    except (ValueError, base64.binascii.Error) as exc:
+    except (ValueError, binascii.Error) as exc:
         raise RuntimeError("INSTAGRAM_COOKIES_BASE64 is not valid Base64.") from exc
 
     return cookie_path
