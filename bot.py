@@ -31,17 +31,18 @@ def extract_instagram_url(text):
     return None
 
 
+def truncate_utf16(text, max_units):
+    encoded = text.encode("utf-16-le")[:max_units * 2]
+    return encoded.decode("utf-16-le", errors="ignore")
+
+
 def build_media_caption(info):
-    description = info.get("description") or ""
-    caption = f"{str(description).strip()}\n\n{BOT_FOOTER}".strip()
-    encoded = caption.encode("utf-16-le")
-    max_bytes = MAX_CAPTION_LENGTH * 2
-
-    if len(encoded) > max_bytes:
-        encoded = encoded[:max_bytes]
-        caption = encoded.decode("utf-16-le", errors="ignore").rstrip()
-
-    return caption
+    description = str(info.get("description") or "").strip()
+    separator = "\n\n" if description else ""
+    footer = f"{separator}{BOT_FOOTER}"
+    available_units = MAX_CAPTION_LENGTH - len(footer.encode("utf-16-le")) // 2
+    description = truncate_utf16(description, available_units).rstrip()
+    return f"{description}{footer}"
 
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
